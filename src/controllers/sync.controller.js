@@ -119,7 +119,7 @@ const syncPush = async (req, res, next) => {
 
     await client.query('COMMIT');
 
-    const lastSyncTime = new Date().toISOString();
+    const newLastSyncTime = new Date().toISOString();
 
     logger.info(`Синхронизация для пользователя ${userId}: фильмы=${moviesSynced}, типы=${typesSynced}, жанры=${genresSynced}`);
 
@@ -129,7 +129,7 @@ const syncPush = async (req, res, next) => {
         moviesSynced,
         typesSynced,
         genresSynced,
-        lastSyncTime
+        lastSyncTime: newLastSyncTime
       }
     });
   } catch (error) {
