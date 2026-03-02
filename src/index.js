@@ -5,15 +5,35 @@ const cron = require('node-cron');
 
 const PORT = process.env.PORT || 3000;
 
-// Проверка подключения к БД перед запуском
+/**
+ * Проверка подключения к БД перед запуском
+ */
+async function checkDatabase() {
+  try {
+    await pool.query('SELECT NOW()');
+    console.log('✅ Database connected');
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Запуск сервера
+ */
 async function startServer() {
   try {
     // Проверяем подключение к БД
-    await pool.query('SELECT NOW()');
-    console.log('✅ Database connected');
+    const dbConnected = await checkDatabase();
+    
+    if (!dbConnected) {
+      console.error('❌ Cannot start server without database connection');
+      process.exit(1);
+    }
 
     // Запускаем сервер
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
@@ -21,7 +41,7 @@ async function startServer() {
 ║                                                           ║
 ║   Server running on port ${PORT}                            ║
 ║   Environment: ${process.env.NODE_ENV || 'development'}                             ║
-║   Time: ${new Date().toLocaleString()}                          ║
+║   Time: ${new Date().toLocaleString('ru-RU')}                          ║
 ║                                                           ║
 ║   Endpoints:                                              ║
 ║   - POST   /api/auth/register     - Регистрация           ║
@@ -37,10 +57,38 @@ async function startServer() {
 ║   - GET    /api/admin/dashboard   - Админ-панель          ║
 ║   - GET    /api/admin/users       - Пользователи          ║
 ║   - GET    /health               - Health check            ║
+║   - GET    /admin                - Web Admin Panel         ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
     });
+
+    // Graceful shutdown
+    const gracefulShutdown = async (signal) => {
+      console.log(`\n📍 ${signal} received. Shutting down gracefully...`);
+      
+      server.close(async () => {
+        console.log('📍 HTTP server closed');
+        
+        try {
+          await pool.end();
+          console.log('✅ Database connections closed');
+          process.exit(0);
+        } catch (error) {
+          console.error('❌ Error during shutdown:', error);
+          process.exit(1);
+        }
+      });
+
+      // Force shutdown after 30 seconds
+      setTimeout(() => {
+        console.error('❌ Forced shutdown due to timeout');
+        process.exit(1);
+      }, 30000);
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // Запускаем фоновые задачи
     setupCronJobs();
@@ -51,13 +99,17 @@ async function startServer() {
   }
 }
 
-// Фоновые задачи
+/**
+ * Фоновые задачи
+ */
 function setupCronJobs() {
   // Очистка просроченных refresh токенов - каждый час
   cron.schedule('0 * * * *', async () => {
     try {
       const deleted = await AuthService.cleanupExpiredTokens();
-      console.log(`[CRON] Cleaned up ${deleted} expired refresh tokens`);
+      if (deleted > 0) {
+        console.log(`[CRON] Cleaned up ${deleted} expired refresh tokens`);
+      }
     } catch (error) {
       console.error('[CRON] Error cleaning up tokens:', error);
     }
@@ -69,7 +121,9 @@ function setupCronJobs() {
       const result = await pool.query(
         `DELETE FROM deleted_movies WHERE expires_at < NOW()`
       );
-      console.log(`[CRON] Cleaned up ${result.rowCount} expired deleted movies`);
+      if (result.rowCount > 0) {
+        console.log(`[CRON] Cleaned up ${result.rowCount} expired deleted movies`);
+      }
     } catch (error) {
       console.error('[CRON] Error cleaning up deleted movies:', error);
     }
@@ -82,7 +136,9 @@ function setupCronJobs() {
         `DELETE FROM user_sessions 
          WHERE last_activity < NOW() - INTERVAL '7 days'`
       );
-      console.log(`[CRON] Cleaned up ${result.rowCount} inactive sessions`);
+      if (result.rowCount > 0) {
+        console.log(`[CRON] Cleaned up ${result.rowCount} inactive sessions`);
+      }
     } catch (error) {
       console.error('[CRON] Error cleaning up sessions:', error);
     }
@@ -94,7 +150,7 @@ function setupCronJobs() {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       
-      const [totalUsers, activeUsers, totalMovies] = await Promise.all([
+      const [totalUsersResult, activeUsersResult, totalMoviesResult] = await Promise.all([
         pool.query("SELECT COUNT(*) FROM users WHERE is_active = true"),
         pool.query("SELECT COUNT(*) FROM users WHERE is_active = true AND last_login_at > NOW() - INTERVAL '30 days'"),
         pool.query("SELECT COUNT(*) FROM movies WHERE deleted_at IS NULL")
@@ -110,9 +166,9 @@ function setupCronJobs() {
            updated_at = CURRENT_TIMESTAMP`,
         [
           yesterday.toISOString().split('T')[0],
-          parseInt(totalUsers.rows[0].count),
-          parseInt(activeUsers.rows[0].count),
-          parseInt(totalMovies.rows[0].count)
+          parseInt(totalUsersResult.rows[0].count),
+          parseInt(activeUsersResult.rows[0].count),
+          parseInt(totalMoviesResult.rows[0].count)
         ]
       );
 
@@ -121,34 +177,9 @@ function setupCronJobs() {
       console.error('[CRON] Error collecting statistics:', error);
     }
   });
+
+  console.log('✅ Cron jobs scheduled');
 }
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('\n📍 SIGTERM received. Shutting down gracefully...');
-  
-  try {
-    await pool.end();
-    console.log('✅ Database connections closed');
-    process.exit(0);
-  } catch (error) {
-    console.error('❌ Error during shutdown:', error);
-    process.exit(1);
-  }
-});
-
-process.on('SIGINT', async () => {
-  console.log('\n📍 SIGINT received. Shutting down gracefully...');
-  
-  try {
-    await pool.end();
-    console.log('✅ Database connections closed');
-    process.exit(0);
-  } catch (error) {
-    console.error('❌ Error during shutdown:', error);
-    process.exit(1);
-  }
-});
 
 // Запуск
 startServer();

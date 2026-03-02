@@ -1,6 +1,9 @@
 const pool = require('../config/database');
 
 const migrations = [
+  // Расширение для UUID
+  `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`,
+
   // Пользователи
   `CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -18,6 +21,7 @@ const migrations = [
   // Индекс для поиска по email
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
   `CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at DESC)`,
 
   // Refresh токены
   `CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -30,6 +34,7 @@ const migrations = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`,
 
   // Карточки фильмов
   `CREATE TABLE IF NOT EXISTS movies (
@@ -53,6 +58,7 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_movies_status ON movies(status)`,
   `CREATE INDEX IF NOT EXISTS idx_movies_deleted_at ON movies(deleted_at)`,
   `CREATE INDEX IF NOT EXISTS idx_movies_sync_version ON movies(sync_version)`,
+  `CREATE INDEX IF NOT EXISTS idx_movies_updated_at ON movies(updated_at DESC)`,
 
   // Типы фильмов (связь многие-ко-многим)
   `CREATE TABLE IF NOT EXISTS movie_types (
@@ -64,10 +70,11 @@ const migrations = [
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    UNIQUE(user_id, name)
+    deleted_at TIMESTAMP WITH TIME ZONE
   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_types_user_id_name ON movie_types(user_id, name) WHERE user_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_movie_types_user_id ON movie_types(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_movie_types_is_default ON movie_types(is_default)`,
 
   // Связь фильмов с типами
   `CREATE TABLE IF NOT EXISTS movie_movie_types (
@@ -87,10 +94,11 @@ const migrations = [
     sort_order INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    UNIQUE(user_id, name)
+    deleted_at TIMESTAMP WITH TIME ZONE
   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_genres_user_id_name ON genres(user_id, name) WHERE user_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_genres_user_id ON genres(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_genres_is_default ON genres(is_default)`,
 
   // Связь фильмов с жанрами
   `CREATE TABLE IF NOT EXISTS movie_genres (
@@ -109,8 +117,10 @@ const migrations = [
     sort_config JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, filter_status)
+    deleted_at TIMESTAMP WITH TIME ZONE
   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sort_orders_user_id_status ON sort_orders(user_id, filter_status) WHERE filter_status IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sort_orders_user_id_null ON sort_orders(user_id) WHERE filter_status IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_sort_orders_user_id ON sort_orders(user_id)`,
 
   // Недавно удалённые
@@ -125,6 +135,7 @@ const migrations = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_deleted_movies_user_id ON deleted_movies(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_deleted_movies_expires_at ON deleted_movies(expires_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_deleted_movies_movie_id ON deleted_movies(movie_id)`,
 
   // Лог синхронизации
   `CREATE TABLE IF NOT EXISTS sync_log (
@@ -139,7 +150,8 @@ const migrations = [
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE INDEX IF NOT EXISTS idx_sync_log_user_id ON sync_log(user_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_sync_log_created_at ON sync_log(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_sync_log_created_at ON sync_log(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_sync_log_user_id_created_at ON sync_log(user_id, created_at DESC)`,
 
   // Сессии пользователей (для админки)
   `CREATE TABLE IF NOT EXISTS user_sessions (
@@ -153,6 +165,7 @@ const migrations = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_user_sessions_is_active ON user_sessions(is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_sessions_last_activity ON user_sessions(last_activity DESC)`,
 
   // Статистика приложения
   `CREATE TABLE IF NOT EXISTS app_statistics (
@@ -167,24 +180,35 @@ const migrations = [
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_app_statistics_date ON app_statistics(stat_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_app_statistics_date ON app_statistics(stat_date DESC)`,
 ];
 
 async function migrate() {
   const client = await pool.connect();
   
   try {
-    console.log('Starting database migration...');
+    console.log('🚀 Starting database migration...');
+    console.log(`📊 Total migrations: ${migrations.length}`);
     
     for (let i = 0; i < migrations.length; i++) {
       const query = migrations[i];
       await client.query(query);
-      console.log(`Migration ${i + 1}/${migrations.length} completed`);
+      
+      // Показываем прогресс для длинных миграций
+      if ((i + 1) % 10 === 0 || i === migrations.length - 1) {
+        console.log(`📝 Migration ${i + 1}/${migrations.length} completed`);
+      }
     }
     
     console.log('✅ All migrations completed successfully');
   } catch (error) {
-    console.error('❌ Migration error:', error);
+    console.error('❌ Migration error:', error.message);
+    if (error.detail) {
+      console.error('📋 Detail:', error.detail);
+    }
+    if (error.hint) {
+      console.error('💡 Hint:', error.hint);
+    }
     throw error;
   } finally {
     client.release();
@@ -193,8 +217,14 @@ async function migrate() {
 
 if (require.main === module) {
   migrate()
-    .then(() => process.exit(0))
-    .catch(() => process.exit(1));
+    .then(() => {
+      console.log('✅ Migration finished');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('❌ Migration failed');
+      process.exit(1);
+    });
 }
 
 module.exports = { migrate };
