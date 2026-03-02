@@ -1,271 +1,320 @@
-# 🚀 Инструкция по развёртыванию MovieList Backend на VDS
+# Инструкция по развёртыванию MovieList на сервере Ubuntu 24.04
 
-## 📋 Шаг 1: Выбор ОС
-
-**Рекомендуется: Ubuntu 24.04-amd64**
-
-Причины:
-- ✅ Долгосрочная поддержка (LTS) до 2029 года
-- ✅ Актуальные пакеты
-- ✅ Лучшая документация
-- ✅ Совместимость со всеми инструментами
+## Информация о сервере
+- **IP-адрес:** 95.81.121.164
+- **ОС:** Ubuntu 24.04 LTS
+- **Порт приложения:** 3000
+- **База данных:** PostgreSQL
+- **Кэш:** Redis
 
 ---
 
-## 📋 Шаг 2: Копирование файлов на сервер
+## Шаг 1: Подготовка сервера
 
-### Вариант A: Через SCP (Windows PowerShell)
-
-```powershell
-scp -r c:\MovieList\movielist_app\backend\* root@ваш-IP:/var/www/movielist-backend/
-```
-
-### Вариант B: Через WinSCP / FileZilla
-
-1. Подключитесь к серверу:
-   - Хост: `ваш-IP` или `vm3962043.ovz.srv.ru`
-   - Порт: `22`
-   - Логин: `root`
-   - Пароль: (ваш пароль от VDS)
-
-2. Перейдите в `/var/www/`
-
-3. Создайте папку `movielist-backend`
-
-4. Загрузите все файлы из `backend/` в эту папку
-
----
-
-## 📋 Шаг 3: Подключение к серверу
-
+### 1.1. Подключение к серверу
 ```bash
-ssh root@ваш-IP
+ssh root@95.81.121.164
 ```
 
----
-
-## 📋 Шаг 4: Запуск установки
-
+### 1.2. Запуск скрипта настройки
 ```bash
-# Перейдите в директорию
-cd /var/www/movielist-backend/
+# Скопируйте скрипт на сервер
+scp setup_server.sh root@95.81.121.164:/root/
 
-# Дайте права на выполнение скрипта
-chmod +x install.sh
-
-# Запустите установку
-./install.sh
+# Подключитесь к серверу и запустите скрипт
+ssh root@95.81.121.164
+cd /root
+chmod +x setup_server.sh
+./setup_server.sh
 ```
 
-### Скрипт спросит:
-
-1. **Пароль для БД** - придумайте надёжный пароль (минимум 8 символов)
-2. **Email администратора** - например, `admin@movielist.app`
-3. **Пароль администратора** - минимум 8 символов (запомните!)
-4. **Домен** - нажмите Enter для использования IP сервера
+Скрипт автоматически:
+- Обновит систему
+- Установит Node.js 20.x, PostgreSQL 16, Redis, Nginx
+- Настроит брандмауэр (порты 22, 80, 443, 3000)
+- Настроит Fail2Ban
+- Создаст базу данных и пользователя
+- Создаст структуру приложения
+- Настроит Nginx как reverse proxy
 
 ---
 
-## 📋 Шаг 5: Проверка работы
+## Шаг 2: Развёртывание backend
 
-После завершения установки:
+### 2.1. Копирование файлов backend на сервер
+```bash
+# С локальной машины
+scp -r backend/* root@95.81.121.164:/var/www/movielist-backend/
+```
 
+### 2.2. Установка зависимостей
+```bash
+# На сервере
+cd /var/www/movielist-backend
+npm install
+```
+
+### 2.3. Инициализация базы данных
+```bash
+# На сервере
+sudo -u postgres psql -d movielist -f /var/www/movielist-backend/database/init.sql
+```
+
+### 2.4. Запуск приложения через PM2
+```bash
+# На сервере
+cd /var/www/movielist-backend
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+# Выполните команду, которую выведет pm2 startup
+```
+
+### 2.5. Проверка работы
 ```bash
 # Проверка статуса
 pm2 status
 
-# Проверка логов
-pm2 logs movielist-backend
+# Просмотр логов
+pm2 logs movielist-api
 
-# Проверка доступности
+# Проверка API
 curl http://localhost:3000/health
 ```
 
-### Открыть в браузере:
-
-- **Админ-панель**: `http://ваш-IP/admin`
-- **API**: `http://ваш-IP/api/`
-- **Health**: `http://ваш-IP/health`
-
 ---
 
-## 📋 Шаг 6: Первый вход
+## Шаг 3: Настройка Flutter-приложения
 
-1. Откройте `http://ваш-IP/admin`
-2. Введите email и пароль администратора (которые указали при установке)
-3. Готово!
+### 3.1. Обновление URL сервера
 
----
+Файлы для проверки:
+- `lib/services/auth_service.dart` - строка `_baseUrl`
+- `lib/services/sync_service.dart` - строка `_baseUrl`
 
-## 🔧 Полезные команды
+```dart
+static const String _baseUrl = 'http://95.81.121.164:3000/api';
+```
 
+### 3.2. Установка зависимостей
 ```bash
-# Статус процессов
+cd c:\MovieList\movielist_app
+flutter pub get
+```
+
+### 3.3. Сборка и запуск
+```bash
+# Для Android
+flutter build apk --release
+
+# Для iOS
+flutter build ios --release
+```
+
+---
+
+## Шаг 4: Проверка работы
+
+### 4.1. Тестирование API
+```bash
+# Health check
+curl http://95.81.121.164:3000/health
+
+# Регистрация
+curl -X POST http://95.81.121.164:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!",
+    "displayName": "Test User"
+  }'
+
+# Вход
+curl -X POST http://95.81.121.164:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!",
+    "deviceId": "test-device-123"
+  }'
+```
+
+### 4.2. Тестирование приложения
+1. Запустите приложение на устройстве/эмуляторе
+2. Попробуйте зарегистрироваться
+3. Попробуйте войти
+4. Проверьте синхронизацию данных
+
+---
+
+## Полезные команды
+
+### Управление приложением
+```bash
+# Статус приложений
 pm2 status
 
-# Логи в реальном времени
-pm2 logs movielist-backend --lines 100
+# Перезапуск
+pm2 restart movielist-api
 
-# Перезапуск сервера
-pm2 restart movielist-backend
+# Остановка
+pm2 stop movielist-api
 
-# Остановка сервера
-pm2 stop movielist-backend
+# Логи
+pm2 logs movielist-api --lines 100
 
-# Мониторинг ресурсов
+# Мониторинг
 pm2 monit
+```
 
-# Проверка статуса Nginx
-systemctl status nginx
+### Логи
+```bash
+# Логи Nginx
+tail -f /var/log/nginx/movielist_access.log
+tail -f /var/log/nginx/movielist_error.log
 
+# Логи приложения
+tail -f /var/www/movielist-backend/logs/combined.log
+tail -f /var/www/movielist-backend/logs/error.log
+```
+
+### База данных
+```bash
+# Подключение к PostgreSQL
+sudo -u postgres psql
+
+# Подключение к конкретной БД
+sudo -u postgres psql -d movielist
+
+# Просмотр таблиц
+\dt
+
+# Выход
+\q
+```
+
+### Перезапуск служб
+```bash
+systemctl restart nginx
+systemctl restart postgresql
+systemctl restart redis-server
+systemctl restart fail2ban
+```
+
+---
+
+## Структура файлов backend
+
+```
+/var/www/movielist-backend/
+├── server.js                 # Точка входа
+├── package.json              # Зависимости
+├── ecosystem.config.js       # Конфигурация PM2
+├── .env                      # Переменные окружения (не копировать!)
+├── database/
+│   └── init.sql              # Схема БД
+├── logs/                     # Логи приложения
+├── uploads/                  # Загруженные файлы
+└── src/
+    ├── app.js                # Приложение Express
+    ├── config/
+    │   ├── database.js       # Подключение к PostgreSQL
+    │   └── redis.js          # Подключение к Redis
+    ├── controllers/
+    │   ├── auth.controller.js
+    │   ├── sync.controller.js
+    │   └── user.controller.js
+    ├── middleware/
+    │   ├── authMiddleware.js
+    │   └── errorHandler.js
+    ├── models/
+    │   ├── User.js
+    │   └── Session.js
+    ├── routes/
+    │   ├── auth.routes.js
+    │   ├── sync.routes.js
+    │   └── user.routes.js
+    └── utils/
+        └── logger.js         # Логирование
+```
+
+---
+
+## Безопасность
+
+### 1. Обновление системы
+```bash
+# Автоматические обновления безопасности
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+```
+
+### 2. Проверка брандмауэра
+```bash
+ufw status
+```
+
+### 3. Мониторинг попыток взлома
+```bash
+# Fail2Ban логи
+tail -f /var/log/fail2ban.log
+
+# SSH логи
+tail -f /var/log/auth.log
+```
+
+### 4. Резервное копирование БД
+```bash
+# Создать дамп
+sudo -u postgres pg_dump movielist > /backup/movielist_$(date +%Y%m%d).sql
+
+# Восстановить из дампа
+sudo -u postgres psql movielist < /backup/movielist_20240101.sql
+```
+
+---
+
+## Устранение неполадок
+
+### Приложение не запускается
+```bash
+# Проверка логов PM2
+pm2 logs movielist-api --err
+
+# Проверка порта
+netstat -tulpn | grep 3000
+
+# Проверка .env файла
+cat /var/www/movielist-backend/.env
+```
+
+### Ошибка подключения к БД
+```bash
 # Проверка статуса PostgreSQL
 systemctl status postgresql
 
-# Проверка брандмауэра
-ufw status
+# Проверка подключения
+sudo -u postgres psql -d movielist -c "SELECT NOW()"
 ```
 
----
-
-## 🔐 Настройка SSL (если есть домен)
-
+### Ошибка 502 Bad Gateway
 ```bash
-# Установка Certbot
-sudo apt install -y certbot python3-certbot-nginx
-
-# Получение сертификата
-sudo certbot --nginx -d ваш-домен.com
-
-# Автоматическое обновление
-sudo certbot renew --dry-run
-```
-
----
-
-## 🐛 Устранение проблем
-
-### Ошибка: "permission denied for schema public"
-
-```bash
-sudo -u postgres psql << EOF
-\c movielist_db
-GRANT ALL ON SCHEMA public TO movielist_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO movielist_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO movielist_user;
-\q
-EOF
-
-# Перезапустите миграции
-npm run migrate
-npm run seed
-```
-
-### Ошибка: "порт 3000 занят"
-
-```bash
-# Найти процесс
-sudo lsof -i :3000
-
-# Убить процесс
-sudo kill -9 <PID>
-
-# Или измените порт в .env
-PORT=3001
-```
-
-### Сервер не доступен извне
-
-```bash
-# Проверьте брандмауэр
-ufw status
-
-# Откройте порт если нужно
-ufw allow 3000/tcp
-ufw reload
-```
-
-### Nginx выдаёт 502 Bad Gateway
-
-```bash
-# Проверьте, запущен ли backend
+# Проверка статуса приложения
 pm2 status
 
-# Если нет - запустите
-pm2 start movielist-backend
+# Проверка логов Nginx
+tail -f /var/log/nginx/movielist_error.log
 
-# Перезапустите Nginx
+# Перезапуск Nginx
 systemctl restart nginx
 ```
 
 ---
 
-## 📊 Мониторинг
+## Контакты и поддержка
 
-### Логи приложения
-
-```bash
-# PM2 логи
-pm2 logs movielist-backend
-
-# Nginx логи
-tail -f /var/log/nginx/access.log
-tail -f /var/log/nginx/error.log
-
-# PostgreSQL логи
-tail -f /var/log/postgresql/postgresql-*.log
-```
-
-### Статистика
-
-```bash
-# Использование памяти
-free -h
-
-# Использование диска
-df -h
-
-# Загрузка CPU
-top
-```
-
----
-
-## 🔄 Обновление приложения
-
-```bash
-cd /var/www/movielist-backend
-
-# Обновите файлы (через git или scp)
-
-# Установите зависимости если изменился package.json
-npm install --production
-
-# Перезапустите сервер
-pm2 restart movielist-backend
-```
-
----
-
-## 📞 Контакты
-
-При возникновении проблем проверьте:
-
-1. ✅ Статус сервисов: `pm2 status && systemctl status nginx postgresql`
-2. ✅ Логи: `pm2 logs movielist-backend`
-3. ✅ Брандмауэр: `ufw status`
-4. ✅ Переменные окружения: `cat /var/www/movielist-backend/.env`
-
----
-
-## ✅ Чек-лист после установки
-
-- [ ] Сервер отвечает на `/health`
-- [ ] Админ-панель доступна
-- [ ] Можно войти с учётными данными админа
-- [ ] PostgreSQL работает
-- [ ] Nginx работает
-- [ ] Брандмауэр настроен
-- [ ] PM2 автозапуск настроен
-- [ ] Логи записываются
-
-**После успешной установки можно приступать к интеграции с Flutter-приложением!** 🎉
+В случае возникновения проблем:
+1. Проверьте логи приложения
+2. Проверьте логи Nginx
+3. Проверьте статус служб
+4. Проверьте доступность портов
