@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MovieList Backend - Скрипт установки на VDS (исправленный)
+# MovieList Backend - Скрипт установки на VDS
 # Запускается ИЗ директории backend после копирования файлов
 
 set -e
@@ -53,17 +53,37 @@ npm install -g pm2
 echo -e "${YELLOW}[5/8] Установка Nginx...${NC}"
 apt install -y nginx
 
-# Создание пользователя БД
+# Создание пользователя БД и базы данных
 echo -e "${YELLOW}[6/8] Настройка базы данных...${NC}"
 read -p "Введите пароль для БД: " -s DB_PASSWORD
 echo
 
+# Удаляем старую базу и пользователя если существуют, создаём заново с правильными правами
 sudo -u postgres psql << EOF
-CREATE DATABASE movielist_db;
+-- Удаляем старое если есть
+DROP DATABASE IF EXISTS movielist_db;
+DROP USER IF EXISTS movielist_user;
+
+-- Создаём пользователя и базу
 CREATE USER movielist_user WITH PASSWORD '${DB_PASSWORD}';
+CREATE DATABASE movielist_db OWNER movielist_user;
+
+-- Подключаемся к базе и настраиваем права
+\\c movielist_db
+
+-- Предоставляем все права на схему public
+GRANT ALL ON SCHEMA public TO movielist_user;
 GRANT ALL PRIVILEGES ON DATABASE movielist_db TO movielist_user;
-\q
+
+-- Для PostgreSQL 15+ - права по умолчанию
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO movielist_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO movielist_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO movielist_user;
+
+\\q
 EOF
+
+echo -e "${GREEN}✓ База данных настроена${NC}"
 
 # Создание .env
 echo -e "${YELLOW}[7/8] Настройка переменных окружения...${NC}"
@@ -86,6 +106,8 @@ sed -i "s|ADMIN_EMAIL=.*|ADMIN_EMAIL=${ADMIN_EMAIL}|" .env
 sed -i "s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASSWORD}|" .env
 sed -i "s|JWT_ACCESS_SECRET=.*|JWT_ACCESS_SECRET=${JWT_ACCESS}|" .env
 sed -i "s|JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=${JWT_REFRESH}|" .env
+
+echo -e "${GREEN}✓ .env настроен${NC}"
 
 # Установка зависимостей
 echo -e "${YELLOW}[8/8] Установка зависимостей npm...${NC}"
