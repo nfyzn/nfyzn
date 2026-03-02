@@ -37,7 +37,7 @@ async function seed() {
       console.log('ℹ️  Admin user updated:', adminEmail);
     }
     
-    // Создаём типы по умолчанию (без привязки к пользователю)
+    // Создаём типы по умолчанию (без привязки к пользователю - is_default=true, user_id=NULL)
     const defaultTypes = [
       { name: 'Аниме', color: '#4CAF50' },
       { name: 'Фильм', color: '#2196F3' },
@@ -47,24 +47,20 @@ async function seed() {
     
     let typesCreated = 0;
     for (const type of defaultTypes) {
-      const result = await client.query(
-        `INSERT INTO movie_types (name, color, is_default, sort_order)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id, name) DO NOTHING
-         RETURNING id`,
-        [type.name, type.color, true, defaultTypes.indexOf(type)]
+      // Проверяем существование
+      const existing = await client.query(
+        'SELECT id FROM movie_types WHERE name = $1 AND is_default = true',
+        [type.name]
       );
       
-      // Если user_id NULL (для дефолтных), просто вставляем
-      if (result.rows.length === 0) {
+      if (existing.rows.length === 0) {
         await client.query(
           `INSERT INTO movie_types (name, color, is_default, sort_order)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT DO NOTHING`,
-          [type.name, type.color, true, defaultTypes.indexOf(type)]
+           VALUES ($1, $2, true, $3)`,
+          [type.name, type.color, defaultTypes.indexOf(type)]
         );
+        typesCreated++;
       }
-      typesCreated++;
     }
     console.log(`✅ Default types created: ${typesCreated}`);
     
@@ -76,23 +72,20 @@ async function seed() {
     
     let genresCreated = 0;
     for (const genre of defaultGenres) {
-      const result = await client.query(
-        `INSERT INTO genres (name, is_default, sort_order)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (user_id, name) DO NOTHING
-         RETURNING id`,
-        [genre, true, defaultGenres.indexOf(genre)]
+      // Проверяем существование
+      const existing = await client.query(
+        'SELECT id FROM genres WHERE name = $1 AND is_default = true',
+        [genre]
       );
       
-      if (result.rows.length === 0) {
+      if (existing.rows.length === 0) {
         await client.query(
           `INSERT INTO genres (name, is_default, sort_order)
-           VALUES ($1, $2, $3)
-           ON CONFLICT DO NOTHING`,
-          [genre, true, defaultGenres.indexOf(genre)]
+           VALUES ($1, true, $2)`,
+          [genre, defaultGenres.indexOf(genre)]
         );
+        genresCreated++;
       }
-      genresCreated++;
     }
     console.log(`✅ Default genres created: ${genresCreated}`);
     

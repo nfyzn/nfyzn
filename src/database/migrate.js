@@ -61,6 +61,7 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_movies_updated_at ON movies(updated_at DESC)`,
 
   // Типы фильмов (связь многие-ко-многим)
+  // Уникальный индекс только для пользовательских типов (user_id NOT NULL)
   `CREATE TABLE IF NOT EXISTS movie_types (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -72,7 +73,10 @@ const migrations = [
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_types_user_id_name ON movie_types(user_id, name) WHERE user_id IS NOT NULL`,
+  // Уникальность только для пользовательских типов
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_types_user_name_unique 
+   ON movie_types(user_id, name) 
+   WHERE user_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_movie_types_user_id ON movie_types(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_movie_types_is_default ON movie_types(is_default)`,
 
@@ -86,6 +90,7 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_movie_movie_types_type_id ON movie_movie_types(movie_type_id)`,
 
   // Жанры (связь многие-ко-многим)
+  // Уникальный индекс только для пользовательских жанров (user_id NOT NULL)
   `CREATE TABLE IF NOT EXISTS genres (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -96,7 +101,10 @@ const migrations = [
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_genres_user_id_name ON genres(user_id, name) WHERE user_id IS NOT NULL`,
+  // Уникальность только для пользовательских жанров
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_genres_user_name_unique 
+   ON genres(user_id, name) 
+   WHERE user_id IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_genres_user_id ON genres(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_genres_is_default ON genres(is_default)`,
 
@@ -119,8 +127,12 @@ const migrations = [
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sort_orders_user_id_status ON sort_orders(user_id, filter_status) WHERE filter_status IS NOT NULL`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sort_orders_user_id_null ON sort_orders(user_id) WHERE filter_status IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sort_orders_user_status_unique 
+   ON sort_orders(user_id, filter_status) 
+   WHERE filter_status IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sort_orders_user_null_unique 
+   ON sort_orders(user_id) 
+   WHERE filter_status IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_sort_orders_user_id ON sort_orders(user_id)`,
 
   // Недавно удалённые
