@@ -80,8 +80,12 @@ class Session {
   }
 
   // Удаление всех сессий пользователя
-  static async deleteAllForUser(userId) {
-    await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+  static async deleteAllForUser(userId, deviceId = null) {
+    if (deviceId) {
+      await pool.query('DELETE FROM sessions WHERE user_id = $1 AND device_id = $2', [userId, deviceId]);
+    } else {
+      await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+    }
   }
 
   // Генерация нового access токена

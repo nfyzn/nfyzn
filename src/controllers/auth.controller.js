@@ -114,13 +114,7 @@ const login = async (req, res, next) => {
     }
 
     // Удаление старых сессий для этого устройства
-    const existingSessions = await pool.query(
-      'SELECT id FROM sessions WHERE user_id = $1 AND device_id = $2',
-      [user.id, deviceId]
-    );
-    for (const session of existingSessions.rows) {
-      await Session.delete(session.id);
-    }
+    await Session.deleteAllForUser(user.id, deviceId);
 
     // Создание новой сессии
     const session = await Session.create({ userId: user.id, deviceId });
