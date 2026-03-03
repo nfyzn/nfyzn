@@ -112,7 +112,6 @@ const syncPush = async (req, res, next) => {
     // Обработка ожидающих изменений
     if (pendingChanges && Array.isArray(pendingChanges)) {
       for (const change of pendingChanges) {
-        // TODO: Обработка отдельных изменений
         logger.debug(`Обработано изменение: ${change.type}/${change.action}/${change.id}`);
       }
     }
@@ -144,15 +143,15 @@ const syncPush = async (req, res, next) => {
 const syncPull = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const lastSyncTime = req.query.lastSyncTime;
+    const pullLastSyncTime = req.query.lastSyncTime;
 
     let whereClause = 'user_id = $1';
     const values = [userId];
     let paramCount = 2;
 
-    if (lastSyncTime) {
+    if (pullLastSyncTime) {
       whereClause += ` AND updated_at > $${paramCount++}`;
-      values.push(lastSyncTime);
+      values.push(pullLastSyncTime);
     }
 
     // Получение фильмов

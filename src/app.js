@@ -13,7 +13,7 @@ const logger = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const syncRoutes = require('./routes/sync.routes');
 const userRoutes = require('./routes/user.routes');
-const errorHandler = require('./middleware/errorHandler');
+const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 

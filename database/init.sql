@@ -1,5 +1,6 @@
 -- MovieList Database Schema
 -- PostgreSQL 16+
+-- Запуск: sudo -u postgres psql -d movielist -f /var/www/movielist-backend/database/init.sql
 
 -- Пользователи
 CREATE TABLE IF NOT EXISTS users (
@@ -113,47 +114,5 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
 CREATE TRIGGER update_movies_updated_at BEFORE UPDATE ON movies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Встроенные типы (по умолчанию)
-INSERT INTO movie_types (id, user_id, name, color_value, is_default)
-SELECT 
-    gen_random_uuid(),
-    id,
-    t.name,
-    t.color_value,
-    TRUE
-FROM users,
-LATERAL (VALUES 
-    ('Аниме', 4282085606),
-    ('Фильм', 4278229241),
-    ('Сериал', 4285090764),
-    ('Мультфильм', 4289389030)
-) AS t(name, color_value)
-WHERE NOT EXISTS (
-    SELECT 1 FROM movie_types mt 
-    WHERE mt.user_id = users.id AND mt.name = t.name
-);
-
--- Встроенные жанры (по умолчанию)
-INSERT INTO genres (id, user_id, name, is_default)
-SELECT 
-    gen_random_uuid(),
-    id,
-    g.name,
-    TRUE
-FROM users,
-LATERAL (VALUES 
-    ('Боевик'),
-    ('Комедия'),
-    ('Драма'),
-    ('Ужасы'),
-    ('Фантастика'),
-    ('Фэнтези'),
-    ('Романтика'),
-    ('Триллер'),
-    ('Приключения'),
-    ('Анимация')
-) AS g(name)
-WHERE NOT EXISTS (
-    SELECT 1 FROM genres gr 
-    WHERE gr.user_id = users.id AND gr.name = g.name
-);
+-- Встроенные типы (по умолчанию) - добавляются при первом входе пользователя
+-- Встроенные жанры (по умолчанию) - добавляются при первом входе пользователя

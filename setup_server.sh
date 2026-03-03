@@ -190,13 +190,26 @@ DB_PASSWORD=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 echo "DB_PASSWORD=$DB_PASSWORD" > /root/movielist_db_password.txt
 chmod 600 /root/movielist_db_password.txt
 
-# Создание пользователя и БД
+# Создание пользователя и БД с правильными правами
 sudo -u postgres psql << EOF
+-- Удалить если существуют
+DROP DATABASE IF EXISTS movielist;
+DROP USER IF EXISTS movielist_user;
+
+-- Создать пользователя и БД
 CREATE DATABASE movielist;
 CREATE USER movielist_user WITH PASSWORD '$DB_PASSWORD';
 GRANT ALL PRIVILEGES ON DATABASE movielist TO movielist_user;
 ALTER DATABASE movielist OWNER TO movielist_user;
-\q
+
+-- Дать права на схему public
+\\c movielist
+GRANT ALL ON SCHEMA public TO movielist_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO movielist_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO movielist_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO movielist_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO movielist_user;
+\\q
 EOF
 
 log_info "База данных 'movielist' создана"
@@ -326,9 +339,10 @@ echo ""
 log_info "Следующие шаги:"
 log_info "  1. Скопируйте файлы backend в /var/www/movielist-backend/"
 log_info "  2. Выполните: cd /var/www/movielist-backend && npm install"
-log_info "  3. Выполните: pm2 start ecosystem.config.js"
-log_info "  4. Выполните: pm2 save"
-log_info "  5. Выполните: pm2 startup"
+log_info "  3. Инициализируйте БД: sudo -u postgres psql -d movielist -f database/init.sql"
+log_info "  4. Выполните: pm2 start ecosystem.config.js"
+log_info "  5. Выполните: pm2 save"
+log_info "  6. Выполните: pm2 startup"
 echo ""
 log_info "Полезные команды:"
 log_info "  - pm2 status (статус приложений)"
